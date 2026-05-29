@@ -1,0 +1,322 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Media;
+using System.Windows.Forms;
+ 
+namespace CybersecurityChatbot
+{
+    // ── Delegate (Part 2 requirement) ─────────────────────────────────────────
+    public delegate void ResponseGeneratedHandler(string response, SentimentType sentiment);
+ 
+    public enum SentimentType { Neutral, Worried, Curious, Frustrated, Positive }
+ 
+    // ── Memory class ──────────────────────────────────────────────────────────
+    public class UserMemory
+    {
+        public string Name { get; set; } = "";
+        public string FavouriteTopic { get; set; } = "";
+        public string LastTopic { get; set; } = "";
+        public int QuestionCount { get; set; } = 0;
+    }
+ 
+    // ── ChatBot class ─────────────────────────────────────────────────────────
+    public class ChatBot
+    {
+        public event ResponseGeneratedHandler OnResponseGenerated;
+        private readonly Random _rng = new Random();
+        private readonly UserMemory _mem = new UserMemory();
+ 
+        private readonly Dictionary<string, List<string>> _responses = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["password"] = new List<string> {
+                "Use strong, unique passwords for every account — at least 12 characters with symbols.",
+                "Never reuse passwords. A breach on one site can expose all your accounts.",
+                "Consider a password manager to generate and store complex passwords safely.",
+                "Enable two-factor authentication alongside strong passwords for best protection." },
+            ["phishing"] = new List<string> {
+                "Be cautious of emails asking for personal info — scammers disguise themselves as trusted organisations.",
+                "Always verify the sender's email address before clicking any links.",
+                "Legitimate organisations never ask for your password via email.",
+                "Watch for urgency tactics — phishing emails create panic to make you act fast." },
+            ["scam"] = new List<string> {
+                "If it seems too good to be true, it probably is. Always verify before sharing info.",
+                "Scammers impersonate banks and government agencies. Call official numbers to verify.",
+                "Never send money or gift cards to someone you haven't met — classic scam red flag.",
+                "Report scams to your local consumer protection authority." },
+            ["privacy"] = new List<string> {
+                "Review your social media privacy settings regularly.",
+                "Be mindful of personal info you share — even small details can be pieced together.",
+                "Use a VPN on public Wi-Fi to keep your data private.",
+                "Read privacy policies before signing up for new apps." },
+            ["malware"] = new List<string> {
+                "Keep your antivirus software updated to protect against the latest threats.",
+                "Never download software from unofficial sources — malware hides in free downloads.",
+                "Scan your system regularly, especially after visiting unfamiliar websites.",
+                "Be wary of USB drives from unknown sources — they can carry auto-run malware." },
+            ["vpn"] = new List<string> {
+                "A VPN encrypts your traffic and masks your IP address.",
+                "Use a reputable paid VPN — free VPNs often sell your data.",
+                "A VPN is especially useful on public Wi-Fi like coffee shops or airports." },
+            ["2fa"] = new List<string> {
+                "Two-factor authentication adds an extra security layer beyond just a password.",
+                "Enable 2FA on email, banking, and social media accounts especially.",
+                "Use an authenticator app rather than SMS for stronger 2FA." },
+            ["ransomware"] = new List<string> {
+                "Back up your data regularly to protect against ransomware.",
+                "Never open suspicious email attachments — ransomware spreads via phishing.",
+                "Keep your OS and software updated to reduce ransomware vulnerability." },
+            ["links"] = new List<string> {
+                "Hover over links before clicking to preview the actual URL.",
+                "Use a URL expander on shortened links before visiting them.",
+                "Look for HTTPS and a padlock before entering sensitive information." },
+            ["wifi"] = new List<string> {
+                "Avoid accessing sensitive accounts on public Wi-Fi without a VPN.",
+                "Use WPA3 or WPA2 on your home router and change the default password.",
+                "Turn off Wi-Fi auto-connect to prevent joining rogue hotspots." }
+        };
+ 
+        private readonly List<string> _followUps = new List<string> {
+            "tell me more","explain more","another tip","give me another","more info","more details","more","go on","continue" };
+ 
+        private readonly Dictionary<string, SentimentType> _sentiments = new Dictionary<string, SentimentType>(StringComparer.OrdinalIgnoreCase) {
+            ["worried"] = SentimentType.Worried, ["scared"] = SentimentType.Worried,
+            ["afraid"] = SentimentType.Worried,  ["nervous"] = SentimentType.Worried,
+            ["curious"] = SentimentType.Curious, ["interested"] = SentimentType.Curious,
+            ["wondering"] = SentimentType.Curious,
+            ["frustrated"] = SentimentType.Frustrated, ["confused"] = SentimentType.Frustrated,
+            ["don't understand"] = SentimentType.Frustrated,
+            ["thanks"] = SentimentType.Positive, ["thank you"] = SentimentType.Positive,
+            ["great"] = SentimentType.Positive,  ["helpful"] = SentimentType.Positive };
+ 
+        public void SetName(string name) => _mem.Name = name;
+        public string GetName() => _mem.Name;
+        public UserMemory GetMemory() => _mem;
+ 
+        public string Process(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "Please type something!";
+            _mem.QuestionCount++;
+            string low = input.ToLower().Trim();
+            var sentiment = DetectSentiment(low);
+            string reply = BuildReply(low, sentiment);
+            OnResponseGenerated?.Invoke(reply, sentiment);
+            return reply;
+        }
+ 
+        private SentimentType DetectSentiment(string low)
+        {
+            foreach (var kv in _sentiments)
+                if (low.Contains(kv.Key)) return kv.Value;
+            return SentimentType.Neutral;
+        }
+ 
+        private string BuildReply(string low, SentimentType s)
+        {
+            string n = _mem.Name;
+            if (low == "hello" || low == "hi" || low == "hey")
+                return $"Hey {n}! Ask me about passwords, phishing, scams, privacy, malware, VPN, 2FA, ransomware, links or WiFi.";
+            if (low.Contains("how are you"))
+                return "Running at full security capacity! Ready to help you stay safe online.";
+            if (low == "help" || low == "topics")
+                return "Topics: password, phishing, scam, privacy, malware, vpn, 2fa, ransomware, links, wifi. Just type any topic!";
+            if (low.Contains("purpose") || low.Contains("what do you do"))
+                return "I'm your Cybersecurity Awareness Chatbot — helping you stay safe from online threats!";
+ 
+            // Memory: interest capture
+            if (low.Contains("interested in"))
+            {
+                foreach (var key in _responses.Keys)
+                    if (low.Contains(key)) { _mem.FavouriteTopic = key; return $"Got it! I'll remember you're interested in {key}. Ask me anything about it!"; }
+            }
+ 
+            // Follow-up
+            foreach (var f in _followUps)
+                if (low.Contains(f) && !string.IsNullOrEmpty(_mem.LastTopic) && _responses.ContainsKey(_mem.LastTopic))
+                    return $"Here's another tip on {_mem.LastTopic}: {_responses[_mem.LastTopic][_rng.Next(_responses[_mem.LastTopic].Count)]}";
+ 
+            // Sentiment prefix
+            string prefix = s switch {
+                SentimentType.Worried    => $"It's understandable to feel that way, {n}. Let me help. ",
+                SentimentType.Curious    => $"Great curiosity, {n}! ",
+                SentimentType.Frustrated => $"Let me simplify this for you, {n}. ",
+                SentimentType.Positive   => $"Glad you're engaged, {n}! ",
+                _                        => string.IsNullOrEmpty(n) ? "" : $"{n}, "
+            };
+ 
+            // Keyword match
+            foreach (var kv in _responses)
+                if (low.Contains(kv.Key))
+                {
+                    _mem.LastTopic = kv.Key;
+                    string tip = kv.Value[_rng.Next(kv.Value.Count)];
+                    string personal = (!string.IsNullOrEmpty(_mem.FavouriteTopic) && _mem.FavouriteTopic == kv.Key)
+                        ? $" As someone interested in {kv.Key}, this is especially relevant!" : "";
+                    return prefix + tip + personal;
+                }
+ 
+            return $"I'm not sure I understand, {n}. Try: password, phishing, scam, privacy, malware, vpn, 2fa, ransomware, links, or wifi. Type 'help' for all topics.";
+        }
+    }
+ 
+    // ── Main Form ─────────────────────────────────────────────────────────────
+    static class Program
+    {
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MainForm());
+        }
+    }
+ 
+    public class MainForm : Form
+    {
+        private readonly ChatBot _bot = new ChatBot();
+        private bool _nameSet = false;
+ 
+        // colours
+        static Color BgDark   = Color.FromArgb(10, 14, 20);
+        static Color BgCard   = Color.FromArgb(16, 22, 32);
+        static Color BgInput  = Color.FromArgb(22, 32, 46);
+        static Color Cyan     = Color.FromArgb(0, 212, 255);
+        static Color Green    = Color.FromArgb(57, 255, 100);
+        static Color Amber    = Color.FromArgb(255, 191, 0);
+        static Color Red      = Color.FromArgb(255, 70, 70);
+        static Color TextPri  = Color.FromArgb(220, 235, 255);
+        static Color TextMute = Color.FromArgb(100, 130, 170);
+ 
+        RichTextBox rtbChat;
+        TextBox txtInput;
+        Button btnSend, btnClear;
+        Label lblSentiment, lblMemory, lblStatus;
+ 
+        public MainForm()
+        {
+            BuildUI();
+            _bot.OnResponseGenerated += (r, s) => UpdateStatus(s);
+            try { new SoundPlayer("welcome.wav").Play(); } catch { }
+            AppendMsg("BOT", "╔══════════════════════════════════════╗\n║  CYBERSECURITY AWARENESS CHATBOT   ║\n╚══════════════════════════════════════╝\nWelcome! What is your name?", Cyan);
+        }
+ 
+        void BuildUI()
+        {
+            Text = "CyberBot — Cybersecurity Awareness Chatbot";
+            Size = new Size(860, 680);
+            MinimumSize = new Size(640, 500);
+            BackColor = BgDark;
+            ForeColor = TextPri;
+            Font = new Font("Consolas", 9.5f);
+            StartPosition = FormStartPosition.CenterScreen;
+ 
+            // Header
+            var header = new Panel { Dock = DockStyle.Top, Height = 100, BackColor = BgCard };
+            var ascii = new Label {
+                Text =
+                "  ██████╗██╗   ██╗██████╗ ███████╗██████╗ ██████╗  ██████╗ ████████╗\n" +
+                " ██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔═══██╗╚══██╔══╝\n" +
+                " ██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██████╔╝██║   ██║   ██║   \n" +
+                " ╚██████╗   ██║   ██████╔╝███████╗██║  ██║██████╔╝╚██████╔╝   ██║   \n" +
+                "  ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝  ╚═════╝   ╚═╝   ",
+                Font = new Font("Consolas", 5.5f, FontStyle.Bold),
+                ForeColor = Cyan, Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter, BackColor = Color.Transparent };
+            var title = new Label {
+                Text = "🛡  CYBERSECURITY AWARENESS CHATBOT  🛡",
+                Font = new Font("Consolas", 11f, FontStyle.Bold),
+                ForeColor = Cyan, Height = 26, Dock = DockStyle.Bottom,
+                TextAlign = ContentAlignment.MiddleCenter, BackColor = Color.Transparent };
+            header.Controls.Add(ascii);
+            header.Controls.Add(title);
+ 
+            // Status bar
+            var statusBar = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = BgCard };
+            lblStatus = new Label { Text = "● ONLINE", Font = new Font("Consolas", 8f, FontStyle.Bold), ForeColor = Green, AutoSize = true, Location = new Point(8, 7) };
+            lblSentiment = new Label { Text = "MOOD: Neutral", Font = new Font("Consolas", 8f), ForeColor = TextMute, AutoSize = true, Location = new Point(110, 7) };
+            lblMemory = new Label { Text = "MEMORY: empty", Font = new Font("Consolas", 8f), ForeColor = TextMute, AutoSize = true, Location = new Point(270, 7) };
+            statusBar.Controls.AddRange(new Control[] { lblStatus, lblSentiment, lblMemory });
+ 
+            // Input panel
+            var inputPanel = new Panel { Dock = DockStyle.Bottom, Height = 55, BackColor = BgInput, Padding = new Padding(10, 8, 10, 8) };
+            btnClear = new Button { Text = "CLEAR", Width = 70, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = BgCard, ForeColor = TextMute, Font = new Font("Consolas", 8f, FontStyle.Bold), Cursor = Cursors.Hand };
+            btnClear.FlatAppearance.BorderColor = Color.FromArgb(40, 60, 80);
+            btnSend = new Button { Text = "SEND ▶", Width = 95, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = Cyan, ForeColor = BgDark, Font = new Font("Consolas", 9f, FontStyle.Bold), Cursor = Cursors.Hand };
+            btnSend.FlatAppearance.BorderSize = 0;
+            txtInput = new TextBox { Dock = DockStyle.Fill, BackColor = Color.FromArgb(20, 30, 45), ForeColor = TextPri, Font = new Font("Consolas", 10f), BorderStyle = BorderStyle.None };
+            inputPanel.Controls.Add(txtInput);
+            inputPanel.Controls.Add(btnSend);
+            inputPanel.Controls.Add(btnClear);
+ 
+            // Chat area
+            rtbChat = new RichTextBox { Dock = DockStyle.Fill, BackColor = BgDark, ForeColor = TextPri, Font = new Font("Consolas", 9.5f), ReadOnly = true, BorderStyle = BorderStyle.None, WordWrap = true };
+ 
+            Controls.Add(rtbChat);
+            Controls.Add(inputPanel);
+            Controls.Add(statusBar);
+            Controls.Add(header);
+ 
+            // Events
+            btnSend.Click += Send;
+            btnClear.Click += (s, e) => rtbChat.Clear();
+            txtInput.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Send(s, e); } };
+        }
+ 
+        void Send(object sender, EventArgs e)
+        {
+            string input = txtInput.Text.Trim();
+            if (string.IsNullOrWhiteSpace(input)) return;
+            txtInput.Clear();
+ 
+            if (!_nameSet)
+            {
+                _bot.SetName(input);
+                _nameSet = true;
+                AppendMsg("YOU", input, Cyan);
+                AppendMsg("BOT", $"Hello {input}! 👋 Ask me about: passwords, phishing, scams, privacy, malware, VPN, 2FA, ransomware, links, or WiFi.\nType 'help' for all topics.", Green);
+                UpdateMemory();
+                return;
+            }
+ 
+            AppendMsg("YOU", input, Cyan);
+            string reply = _bot.Process(input);
+            AppendMsg("BOT", reply, Green);
+            UpdateMemory();
+        }
+ 
+        void AppendMsg(string who, string msg, Color colour)
+        {
+            rtbChat.SelectionStart = rtbChat.TextLength;
+            rtbChat.SelectionColor = TextMute;
+            rtbChat.AppendText($"\n[{DateTime.Now:HH:mm:ss}] ");
+            rtbChat.SelectionColor = colour;
+            rtbChat.SelectionFont = new Font("Consolas", 9.5f, FontStyle.Bold);
+            rtbChat.AppendText($"{who}: ");
+            rtbChat.SelectionColor = TextPri;
+            rtbChat.SelectionFont = new Font("Consolas", 9.5f, FontStyle.Regular);
+            rtbChat.AppendText(msg + "\n");
+            rtbChat.ScrollToCaret();
+        }
+ 
+        void UpdateStatus(SentimentType s)
+        {
+            var (text, colour) = s switch {
+                SentimentType.Worried    => ("😟 Worried",    Amber),
+                SentimentType.Curious    => ("🤔 Curious",    Cyan),
+                SentimentType.Frustrated => ("😤 Frustrated", Red),
+                SentimentType.Positive   => ("😊 Positive",   Green),
+                _                        => ("😐 Neutral",    TextMute)
+            };
+            lblSentiment.Text = $"MOOD: {text}";
+            lblSentiment.ForeColor = colour;
+        }
+ 
+        void UpdateMemory()
+        {
+            var m = _bot.GetMemory();
+            string t = string.IsNullOrEmpty(m.FavouriteTopic) ? "none" : m.FavouriteTopic;
+            lblMemory.Text = $"MEMORY: topic={t} | q={m.QuestionCount}";
+            lblMemory.ForeColor = string.IsNullOrEmpty(m.FavouriteTopic) ? TextMute : Cyan;
+        }
+    }
+}
